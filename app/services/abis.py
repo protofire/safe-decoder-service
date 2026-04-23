@@ -2,16 +2,25 @@ from typing import cast
 
 from eth_typing import ABI
 from safe_eth.eth.contracts import (
+    get_compatibility_fallback_handler_V1_3_0_contract,
+    get_compatibility_fallback_handler_V1_4_1_contract,
     get_erc20_contract,
     get_erc721_contract,
     get_kyber_network_proxy_contract,
+    get_multi_send_call_only_contract,
     get_multi_send_contract,
+    get_proxy_factory_V1_0_0_contract,
+    get_proxy_factory_V1_1_1_contract,
+    get_proxy_factory_V1_3_0_contract,
+    get_proxy_factory_V1_4_1_contract,
     get_safe_to_l2_migration_contract,
     get_safe_V0_0_1_contract,
     get_safe_V1_0_0_contract,
     get_safe_V1_1_1_contract,
     get_safe_V1_3_0_contract,
     get_safe_V1_4_1_contract,
+    get_sign_message_lib_contract,
+    get_simulate_tx_accessor_V1_4_1_contract,
     get_uniswap_exchange_contract,
 )
 from web3 import Web3
@@ -50,7 +59,7 @@ from app.datasources.abis.sablier import (
     sablier_ctoken_manager,
     sablier_payroll,
 )
-from app.datasources.abis.safe import safe_allowance_module_abi
+from app.datasources.abis.safe import safe_allowance_module_abi, safe_migration_abi
 from app.datasources.abis.sight import (
     conditional_token_abi,
     market_maker_abi,
@@ -104,8 +113,18 @@ class AbiService:
     def get_safe_abis(self) -> list[ABI]:
         return [
             get_multi_send_contract(self.dummy_w3).abi,
+            get_multi_send_call_only_contract(self.dummy_w3).abi,
+            get_sign_message_lib_contract(self.dummy_w3).abi,
+            get_compatibility_fallback_handler_V1_3_0_contract(self.dummy_w3).abi,
+            get_compatibility_fallback_handler_V1_4_1_contract(self.dummy_w3).abi,
+            get_proxy_factory_V1_0_0_contract(self.dummy_w3).abi,
+            get_proxy_factory_V1_1_1_contract(self.dummy_w3).abi,
+            get_proxy_factory_V1_3_0_contract(self.dummy_w3).abi,
+            get_proxy_factory_V1_4_1_contract(self.dummy_w3).abi,
             get_safe_to_l2_migration_contract(self.dummy_w3).abi,
+            get_simulate_tx_accessor_V1_4_1_contract(self.dummy_w3).abi,
             safe_allowance_module_abi,
+            safe_migration_abi,
         ]
 
     def get_erc_abis(self) -> list[ABI]:

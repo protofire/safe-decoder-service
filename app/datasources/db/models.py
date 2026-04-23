@@ -278,6 +278,14 @@ class Contract(SqlQueryBase, TimeStampedSQLModel, table=True):
         return None
 
     @classmethod
+    async def get_distinct_chain_ids(cls) -> list[int]:
+        """
+        :return: All distinct chain_ids currently present in the contract table.
+        """
+        results = await db_session.execute(select(cls.chain_id).distinct())
+        return list(results.scalars().all())
+
+    @classmethod
     async def get_or_create(
         cls,
         address: bytes,
