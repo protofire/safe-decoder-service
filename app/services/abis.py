@@ -60,6 +60,7 @@ from app.datasources.abis.sablier import (
     sablier_payroll,
 )
 from app.datasources.abis.safe import safe_allowance_module_abi, safe_migration_abi
+from app.datasources.abis.seismic import src20_abi
 from app.datasources.abis.sight import (
     conditional_token_abi,
     market_maker_abi,
@@ -131,6 +132,8 @@ class AbiService:
         return [
             get_erc721_contract(self.dummy_w3).abi,
             get_erc20_contract(self.dummy_w3).abi,
+            # Seismic SRC-20 shielded token (transfer(address,suint256))
+            cast(ABI, src20_abi),
         ]
 
     def get_third_parties_abis(self) -> list[ABI]:

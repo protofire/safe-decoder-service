@@ -18,6 +18,7 @@ from app.datasources.abis.gnosis_protocol import (
     fleet_factory_deterministic_abi,
     gnosis_protocol_abi,
 )
+from app.datasources.abis.seismic import src20_abi
 
 from ...datasources.db.database import db_session_context
 from ...datasources.db.models import Abi, AbiSource, Contract
@@ -627,6 +628,104 @@ class TestDataDecoderService(AsyncDbTestCase):
                     "0x3438",
                 )
             },
+        )
+
+    @staticmethod
+    async def _store_src20_abi():
+        source = AbiSource(name="local", url="")
+        await source.create()
+        await Abi(
+            abi_hash=b"SRC20Contract",
+            abi_json=src20_abi,
+            relevance=90,
+            source_id=source.id,
+        ).create()
+
+    @staticmethod
+    def _build_src20_transfer_data(to: str, encrypted_amount_word: str) -> HexBytes:
+        # transfer(address,suint256): selector + recipient word + encrypted amount word
+        to_word = to.lower().replace("0x", "").rjust(64, "0")
+        return HexBytes("0xb10c99b5" + to_word + encrypted_amount_word)
+
+    @db_session_context
+    async def test_decode_src20_transfer(self):
+        await self._store_src20_abi()
+
+        decoder_service = DataDecoderService()
+        await decoder_service.init()
+
+        # Selector must be registered as `transfer(address,suint256)`
+        self.assertIn(bytes.fromhex("b10c99b5"), decoder_service.fn_selectors_with_abis)
+
+        recipient = "0x0dc0dfD22C6Beab74672EADE5F9Be5234AAa43cC"
+        # Encrypted amount word: 100000 in plaintext would be "186a0"; assert it never leaks
+        encrypted_amount_word = "0".rjust(59, "0") + "186a0"
+        data = self._build_src20_transfer_data(recipient, encrypted_amount_word)
+
+        fn_name, parameters = await decoder_service.decode_transaction_with_types(data)
+        self.assertEqual(fn_name, "transfer")
+        self.assertEqual(
+            parameters,
+            [
+                {"name": "to", "type": "address", "value": recipient},
+                {"name": "value", "type": "suint256", "value": None},
+            ],
+        )
+
+        # ERC-20 transfer shape is preserved: same method name and `to` param
+        self.assertEqual(parameters[0]["name"], "to")
+        self.assertEqual(parameters[0]["type"], "address")
+        self.assertEqual(parameters[0]["value"], recipient)
+
+    @db_session_context
+    async def test_decode_src20_transfer_amount_never_plaintext(self):
+        await self._store_src20_abi()
+
+        decoder_service = DataDecoderService()
+        await decoder_service.init()
+
+        recipient = "0x5592EC0cfb4dbc12D3aB100b257153436a1f0FEa"
+        # A non-trivial encrypted amount word that would decode to 100000 as a uint256
+        plaintext_amount = 100000
+        encrypted_amount_word = f"{plaintext_amount:064x}"
+        data = self._build_src20_transfer_data(recipient, encrypted_amount_word)
+
+        fn_name, parameters = await decoder_service.decode_transaction_with_types(data)
+        self.assertEqual(fn_name, "transfer")
+
+        amount_param = parameters[1]
+        self.assertEqual(amount_param["name"], "value")
+        self.assertEqual(amount_param["type"], "suint256")
+        # The encrypted amount must never be surfaced as a plaintext number
+        self.assertIsNone(amount_param["value"])
+        self.assertNotEqual(amount_param["value"], plaintext_amount)
+        self.assertNotEqual(amount_param["value"], str(plaintext_amount))
+
+    @db_session_context
+    async def test_decode_erc20_transfer_unchanged_with_src20_registered(self):
+        # With SRC-20 registered alongside ERC-20, the ERC-20 `transfer` (0xa9059cbb)
+        # decoding must be unchanged: the amount is still a plaintext uint256.
+        await self._store_safe_contract_abi()
+        await self._store_src20_abi()
+
+        decoder_service = DataDecoderService()
+        await decoder_service.init()
+
+        recipient = "0x0dc0dfD22C6Beab74672EADE5F9Be5234AAa43cC"
+        data = HexBytes(
+            "0xa9059cbb"
+            + recipient.lower().replace("0x", "").rjust(64, "0")
+            + f"{100000:064x}"
+        )
+
+        fn_name, parameters = await decoder_service.decode_transaction_with_types(data)
+        self.assertEqual(fn_name, "transfer")
+        self.assertEqual(
+            parameters,
+            [
+                {"name": "to", "type": "address", "value": recipient},
+                {"name": "value", "type": "uint256", "value": "100000"},
+            ],
         )
 
     @db_session_context

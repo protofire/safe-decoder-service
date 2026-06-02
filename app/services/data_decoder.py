@@ -1,7 +1,7 @@
 import asyncio
 import datetime
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterable
 from enum import Enum
 from typing import Any, NotRequired, TypedDict, Union, cast
 
@@ -23,6 +23,12 @@ from web3._utils.normalizers import implicitly_identity
 from ..datasources.db.models import Abi, Contract
 
 logger = logging.getLogger(__name__)
+
+# Seismic shielded ABI types. Their on-chain value is encrypted, so they are NOT
+# canonical ABI types and must never be decoded/surfaced as a plaintext number.
+# Each shielded type still occupies a single static 32-byte word in the calldata.
+# See `app.datasources.abis.seismic`.
+SHIELDED_ABI_TYPES = frozenset({"suint256"})
 
 
 class DataDecoderException(Exception):
@@ -258,6 +264,37 @@ class DataDecoderService:
             value_decoded = str(value_decoded)
         return value_decoded
 
+    def _decode_shielded_arguments(
+        self, types: list[TypeStr], params: bytes
+    ) -> list[Any]:
+        """
+        Decode calldata for a function that contains shielded arguments (see
+        `SHIELDED_ABI_TYPES`). Shielded values are encrypted on-chain, so they MUST
+        NOT be decoded into a plaintext number; they are returned as `None`.
+
+        Every argument (shielded or not) is assumed to occupy a single static
+        32-byte word, which holds for the Seismic SRC-20 `transfer(address,suint256)`
+        signature. Non-shielded words are decoded individually with the standard
+        codec so the shielded word is never passed to it.
+
+        :param types: ABI argument types, including shielded ones
+        :param params: Calldata without the 4-byte selector
+        :return: Decoded values, with `None` for every shielded argument
+        :raises: DecodingError/ValueError if a plaintext word cannot be decoded
+        """
+        values: list[Any] = []
+        for index, argument_type in enumerate(types):
+            if argument_type in SHIELDED_ABI_TYPES:
+                # Never decode the encrypted word, so the value cannot leak
+                values.append(None)
+                continue
+            word = params[index * 32 : (index + 1) * 32]
+            value = decode_abi([argument_type], word)[0]
+            if argument_type == "address":
+                value = fast_to_checksum_address(value)
+            values.append(self._parse_decoded_arguments(value))
+        return values
+
     async def _decode_data(
         self,
         data: bytes | str,
@@ -287,11 +324,18 @@ class DataDecoderService:
         try:
             names = get_abi_input_names(fn_abi)
             types = get_abi_input_types(fn_abi)
-            decoded = decode_abi(types, params)
-            normalized = map_abi_data(
-                [addresses_checksummed_normalizer], types, decoded
-            )
-            values = map(self._parse_decoded_arguments, normalized)
+            values: Iterable[Any]
+            if any(argument_type in SHIELDED_ABI_TYPES for argument_type in types):
+                # Shielded types (e.g. Seismic SRC-20 `suint256`) are encrypted and
+                # not decodable by standard ABI codecs. Decode the remaining
+                # plaintext words but never the shielded ones.
+                values = self._decode_shielded_arguments(types, params)
+            else:
+                decoded = decode_abi(types, params)
+                normalized = map_abi_data(
+                    [addresses_checksummed_normalizer], types, decoded
+                )
+                values = map(self._parse_decoded_arguments, normalized)
         except (ValueError, DecodingError, ArithmeticError) as exc:
             logger.warning(
                 "Cannot decode %s for address %s and chain-id %s",
