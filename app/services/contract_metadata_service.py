@@ -22,6 +22,10 @@ from safe_eth.eth.utils import fast_to_checksum_address
 from app.config import settings
 from app.datasources.cache.redis import get_redis
 from app.datasources.db.models import Abi, AbiSource, Contract
+from app.services.socialscan_client import (
+    AsyncSocialscanClient,
+    SocialscanClientConfigurationProblem,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -30,16 +34,23 @@ class ContractSource(enum.Enum):
     ETHERSCAN = "Etherscan"
     SOURCIFY = "Sourcify"
     BLOCKSCOUT = "Blockscout"
+    SOCIALSCAN = "Socialscan"
 
     @classmethod
     def from_client(
         cls,
-        client: AsyncEtherscanClientV2 | AsyncSourcifyClient | AsyncBlockscoutClient,
+        client: (
+            AsyncEtherscanClientV2
+            | AsyncSourcifyClient
+            | AsyncBlockscoutClient
+            | AsyncSocialscanClient
+        ),
     ) -> "ContractSource":
         mapping = {
             AsyncEtherscanClientV2: cls.ETHERSCAN,
             AsyncSourcifyClient: cls.SOURCIFY,
             AsyncBlockscoutClient: cls.BLOCKSCOUT,
+            AsyncSocialscanClient: cls.SOCIALSCAN,
         }
         client_type = type(client)
         try:
@@ -103,16 +114,41 @@ class ContractMetadataService:
             )
             return None
 
+    def _get_socialscan_client(self, chain_id: int) -> AsyncSocialscanClient | None:
+        base_url = settings.SOCIALSCAN_CLIENT_URLS.get(chain_id)
+        if not base_url:
+            return None
+        try:
+            return AsyncSocialscanClient(
+                EthereumNetwork(chain_id),
+                base_url=base_url,
+                api_key=settings.SOCIALSCAN_API_KEY,
+                max_requests=settings.SOCIALSCAN_MAX_REQUESTS,
+            )
+        except SocialscanClientConfigurationProblem:
+            logger.warning(
+                "Socialscan client is not available for current network %s",
+                EthereumNetwork(chain_id),
+            )
+            return None
+
     @cache  # noqa: B019
     def enabled_clients(
         self, chain_id: int
-    ) -> list[AsyncEtherscanClientV2 | AsyncBlockscoutClient | AsyncSourcifyClient]:
+    ) -> list[
+        AsyncEtherscanClientV2
+        | AsyncBlockscoutClient
+        | AsyncSourcifyClient
+        | AsyncSocialscanClient
+    ]:
         """
         :param chain_id:
         :return: List of available clients for the provided `chain_id`.
-            First Etherscan, second Sourcify, third Blockscout.
+            First Socialscan (only for chains configured in `SOCIALSCAN_CLIENT_URLS`),
+            then Etherscan, Sourcify and Blockscout.
         """
         clients = (
+            self._get_socialscan_client(chain_id),
             self._get_etherscan_client(chain_id),
             self._get_sourcify_client(chain_id),
             self._get_blockscout_client(chain_id),

@@ -14,6 +14,7 @@ from safe_eth.eth.clients import (
 )
 from safe_eth.eth.utils import fast_to_checksum_address
 
+from app.config import settings
 from app.datasources.db.database import db_session, db_session_context
 from app.datasources.db.models import Abi, AbiSource, Contract
 from app.services.contract_metadata_service import (
@@ -21,12 +22,14 @@ from app.services.contract_metadata_service import (
     ContractSource,
     EnhancedContractMetadata,
 )
+from app.services.socialscan_client import AsyncSocialscanClient
 
 from ..datasources.db.async_db_test_case import AsyncDbTestCase
 from ..mocks.contract_metadata_mocks import (
     blockscout_metadata_mock,
     etherscan_metadata_mock,
     etherscan_proxy_metadata_mock,
+    socialscan_metadata_mock,
     sourcify_metadata_mock,
 )
 
@@ -156,6 +159,58 @@ class TestContractMetadataService(AsyncDbTestCase):
         enabled_clients = contract_metadata_service.enabled_clients(chain_id)
         self.assertEqual(len(enabled_clients), 0)
 
+    @mock.patch.object(AsyncBlockscoutClient, "__init__", return_value=None)
+    @mock.patch.object(AsyncSourcifyClient, "__init__", return_value=None)
+    @mock.patch.object(AsyncEtherscanClientV2, "__init__", return_value=None)
+    async def test_enabled_clients_socialscan(
+        self,
+        mock_etherscan_client: MagicMock,
+        mock_sourcify_client: MagicMock,
+        mock_blockscout_client: MagicMock,
+    ):
+        socialscan_chain_id = 5124
+        with mock.patch.object(settings, "SOCIALSCAN_API_KEY", "test-api-key"):
+            contract_metadata_service = ContractMetadataService("")
+            enabled_clients = contract_metadata_service.enabled_clients(
+                socialscan_chain_id
+            )
+            self.assertIs(type(enabled_clients[0]), AsyncSocialscanClient)
+            # Socialscan client should not be enabled for not configured chains
+            enabled_clients = contract_metadata_service.enabled_clients(100)
+            self.assertFalse(
+                any(type(client) is AsyncSocialscanClient for client in enabled_clients)
+            )
+
+        # Socialscan client should be disabled without API key
+        with mock.patch.object(settings, "SOCIALSCAN_API_KEY", ""):
+            contract_metadata_service = ContractMetadataService("")
+            enabled_clients = contract_metadata_service.enabled_clients(
+                socialscan_chain_id
+            )
+            self.assertFalse(
+                any(type(client) is AsyncSocialscanClient for client in enabled_clients)
+            )
+
+    @mock.patch.object(AsyncEtherscanClientV2, "__init__", return_value=None)
+    async def test_contract_source_from_client(
+        self,
+        mock_etherscan_client: MagicMock,
+    ):
+        with mock.patch.object(settings, "SOCIALSCAN_API_KEY", "test-api-key"):
+            contract_metadata_service = ContractMetadataService("")
+            socialscan_client = contract_metadata_service._get_socialscan_client(5124)
+            assert socialscan_client is not None
+            self.assertEqual(
+                ContractSource.from_client(socialscan_client),
+                ContractSource.SOCIALSCAN,
+            )
+            etherscan_client = contract_metadata_service._get_etherscan_client(1)
+            assert etherscan_client is not None
+            self.assertEqual(
+                ContractSource.from_client(etherscan_client),
+                ContractSource.ETHERSCAN,
+            )
+
     @db_session_context
     async def test_process_contract_metadata(self):
         # New contract and abi
@@ -228,6 +283,23 @@ class TestContractMetadataService(AsyncDbTestCase):
         # Refresh was necessary to reuse the same session
         await db_session.refresh(new_contract)
         self.assertEqual(new_contract.abi.abi_json, blockscout_metadata_mock.abi)
+
+        await AbiSource.get_or_create("Socialscan", "")
+        socialscan_contract_data = EnhancedContractMetadata(
+            address=Account.create().address,
+            metadata=socialscan_metadata_mock,
+            source=ContractSource.SOCIALSCAN,
+            chain_id=5124,
+        )
+        result = await ContractMetadataService.process_contract_metadata(
+            socialscan_contract_data
+        )
+        self.assertTrue(result)
+        socialscan_contract = await Contract.get_contract(
+            address=HexBytes(socialscan_contract_data.address), chain_id=5124
+        )
+        self.assertEqual(socialscan_contract.name, socialscan_metadata_mock.name)
+        self.assertEqual(socialscan_contract.abi.abi_json, socialscan_metadata_mock.abi)
 
     @db_session_context
     async def test_should_attempt_download(self):

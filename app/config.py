@@ -40,6 +40,11 @@ class Settings(BaseSettings):
     ETHERSCAN_MAX_REQUESTS: int = 1
     BLOCKSCOUT_MAX_REQUESTS: int = 1
     SOURCIFY_MAX_REQUESTS: int = 100
+    SOCIALSCAN_CLIENT_URLS: dict[int, str] = {
+        5124: "https://api.socialscan.io/seismic-testnet/v1/developer/api",
+    }
+    SOCIALSCAN_API_KEY: str = ""  # Client is disabled when empty
+    SOCIALSCAN_MAX_REQUESTS: int = 10
     CONTRACT_MAX_DOWNLOAD_RETRIES: int = (
         90  # Task running once per day, means 3 months trying.
     )

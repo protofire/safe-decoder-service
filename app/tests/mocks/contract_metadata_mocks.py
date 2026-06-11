@@ -139,6 +139,52 @@ sourcify_metadata_mock = ContractMetadata(
     True,
 )
 
+socialscan_metadata_mock = ContractMetadata(
+    "Socialscan Seismic Contract",
+    [
+        {
+            "anonymous": False,
+            "inputs": [
+                {
+                    "indexed": False,
+                    "internalType": "address",
+                    "name": "socialscanParam",
+                    "type": "address",
+                }
+            ],
+            "name": "AddedOwner",
+            "type": "event",
+        },
+        {
+            "constant": False,
+            "inputs": [
+                {
+                    "internalType": "address",
+                    "name": "_masterCopy",
+                    "type": "address",
+                }
+            ],
+            "name": "changeMasterCopy",
+            "outputs": [],
+            "payable": False,
+            "stateMutability": "nonpayable",
+            "type": "function",
+        },
+        {
+            "constant": False,
+            "inputs": [
+                {"internalType": "uint256", "name": "_threshold", "type": "uint256"}
+            ],
+            "name": "changeThreshold",
+            "outputs": [],
+            "payable": False,
+            "stateMutability": "nonpayable",
+            "type": "function",
+        },
+    ],
+    False,
+)
+
 blockscout_metadata_mock = ContractMetadata(
     "Blockscout Moises Contract",
     [
