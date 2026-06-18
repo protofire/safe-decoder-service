@@ -102,7 +102,7 @@ async def get_contract_metadata_task(
             logger.debug("Skipping contract")
 
 
-@dramatiq.actor(periodic=cron("0 0 * * *"))  # Every midnight
+@dramatiq.actor(periodic=cron("0 */4 * * *"))  # Every 4h
 @db_session_context
 async def get_missing_contract_metadata_task():
     with logging_task_context(CurrentMessage.get_current_message()):
