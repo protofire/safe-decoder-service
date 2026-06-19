@@ -10,6 +10,9 @@ from app.commands.download_contract import download_contract_command
 from app.commands.safe_contracts import (
     setup_safe_contracts,
 )
+from app.commands.seismic_contracts import (
+    setup_seismic_contracts,
+)
 from app.datasources.db.database import db_session, set_database_session_context
 
 
@@ -50,6 +53,11 @@ def register_commands(app: Typer):
     @async_command
     async def load_safe_contracts():
         await setup_safe_contracts()
+
+    @app.command(help="Load Seismic SRC-20 contracts")
+    @async_command
+    async def load_seismic_contracts():
+        await setup_seismic_contracts()
 
     @app.command(help="Force to download a contract")
     @async_command

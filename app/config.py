@@ -45,6 +45,13 @@ class Settings(BaseSettings):
     }
     SOCIALSCAN_API_KEY: str = ""  # Client is disabled when empty
     SOCIALSCAN_MAX_REQUESTS: int = 10
+    # Maps chain_id -> list of SRC-20 shielded token addresses to register against
+    # the local `src20_abi`. These contracts are unverified on their explorer, so
+    # hardcoding the address -> ABI link upgrades decoding accuracy to FULL_MATCH.
+    # Override via env as JSON, e.g. SRC20_TOKEN_ADDRESSES='{"5124": ["0x..."]}'.
+    SRC20_TOKEN_ADDRESSES: dict[int, list[str]] = {
+        5124: ["0x91edd1341dcb5515eaf5ef34338bb2460241f3bf"],
+    }
     CONTRACT_MAX_DOWNLOAD_RETRIES: int = (
         90  # Task running once per day, means 3 months trying.
     )
