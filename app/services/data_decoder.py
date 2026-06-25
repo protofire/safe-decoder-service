@@ -137,6 +137,8 @@ class DataDecoderService:
         :param abi: ABI
         :return: Dictionary with function selector as bytes and the ContractFunction
         """
+        if not abi:
+            return {}
         fn_abis = [fn_abi for fn_abi in abi if fn_abi["type"] == "function"]
         if not fn_abis:
             return {}
