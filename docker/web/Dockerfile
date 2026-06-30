@@ -10,6 +10,7 @@ RUN set -ex \
 	&& buildDeps=" \
 		build-essential \
         curl \
+		git \
 		" \
     && apt-get update \
     && apt-get upgrade -y \

@@ -9,7 +9,8 @@ gunicorn==23.0.0
 periodiq==0.13.0
 pydantic-settings==2.12.0
 redis[hiredis]==6.4.0
-safe-eth-py==7.17.1
+git+https://github.com/protofire/safe-eth-py.git@v7.20.0#egg=safe-eth-py
+#safe-eth-py==7.17.1
 setuptools>=75.0.0,<82
 sqladmin[full]==0.22.0
 sqlmodel==0.0.27

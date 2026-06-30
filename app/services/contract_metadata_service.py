@@ -224,6 +224,15 @@ class ContractMetadataService:
                 await contract.update()
                 return False
 
+            if not contract_metadata.metadata.abi:
+                logging.warning(
+                    "Contract %s returned metadata with empty/None ABI, skipping ABI storage",
+                    contract_metadata.address,
+                )
+                contract.fetch_retries += 1
+                await contract.update()
+                return False
+
             abi, _ = await Abi.get_or_create_abi(
                 abi_json=contract_metadata.metadata.abi,
                 source_id=source.id,
