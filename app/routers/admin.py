@@ -10,7 +10,9 @@ from starlette.requests import Request
 from ..config import settings
 from ..datasources.cache.redis import get_redis
 from ..datasources.db.database import get_engine
-from ..datasources.db.models import Contract
+from ..datasources.db.models import Abi, Contract
+from ..datasources.db.utils import get_md5_abi_hash
+from ..services.abi_normalizer import normalize_abi
 
 
 class AdminAuth(AuthenticationBackend):
@@ -63,6 +65,19 @@ class ContractAdmin(ModelView, model=Contract):
         return await super().on_model_change(data, model, is_created, request)
 
 
+class AbiAdmin(ModelView, model=Abi):
+    column_list = [Abi.id, Abi.relevance, Abi.source]  # type: ignore
+    form_columns = [Abi.relevance, Abi.abi_json, Abi.source]  # type: ignore
+    icon = "fa-solid fa-code"
+
+    async def on_model_change(
+        self, data: dict, model: Abi, is_created: bool, request: Request
+    ) -> None:
+        data["abi_json"] = normalize_abi(data["abi_json"])
+        data["abi_hash"] = get_md5_abi_hash(data["abi_json"])
+        return await super().on_model_change(data, model, is_created, request)
+
+
 def load_admin(app: FastAPI):
     authentication_backend = AdminAuth(secret_key=settings.SECRET_KEY)
     admin = Admin(
@@ -72,3 +87,4 @@ def load_admin(app: FastAPI):
         authentication_backend=authentication_backend,
     )
     admin.add_view(ContractAdmin)
+    admin.add_view(AbiAdmin)

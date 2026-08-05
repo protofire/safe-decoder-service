@@ -7,6 +7,7 @@ from typing import Any
 from typer import Typer
 
 from app.commands.download_contract import download_contract_command
+from app.commands.load_abi import load_abi_command
 from app.commands.safe_contracts import (
     setup_safe_contracts,
 )
@@ -55,3 +56,14 @@ def register_commands(app: Typer):
     @async_command
     async def download_contract(address: str, chain_id: int):
         await download_contract_command(address, chain_id)
+
+    @app.command(help="Load an ABI from a JSON file")
+    @async_command
+    async def load_abi(
+        abi_file: str,
+        relevance: int = 50,
+        description: str | None = None,
+        address: str | None = None,
+        chain_id: int | None = None,
+    ):
+        await load_abi_command(abi_file, relevance, description, address, chain_id)
