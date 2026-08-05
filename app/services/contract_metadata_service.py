@@ -22,6 +22,10 @@ from safe_eth.eth.utils import fast_to_checksum_address
 from app.config import settings
 from app.datasources.cache.redis import get_redis
 from app.datasources.db.models import Abi, AbiSource, Contract
+from app.services.tron_grid_client import (
+    AsyncTronGridClient,
+    TronGridClientConfigurationProblem,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -30,16 +34,23 @@ class ContractSource(enum.Enum):
     ETHERSCAN = "Etherscan"
     SOURCIFY = "Sourcify"
     BLOCKSCOUT = "Blockscout"
+    TRONGRID = "TronGrid"
 
     @classmethod
     def from_client(
         cls,
-        client: AsyncEtherscanClientV2 | AsyncSourcifyClient | AsyncBlockscoutClient,
+        client: (
+            AsyncEtherscanClientV2
+            | AsyncSourcifyClient
+            | AsyncBlockscoutClient
+            | AsyncTronGridClient
+        ),
     ) -> "ContractSource":
         mapping = {
             AsyncEtherscanClientV2: cls.ETHERSCAN,
             AsyncSourcifyClient: cls.SOURCIFY,
             AsyncBlockscoutClient: cls.BLOCKSCOUT,
+            AsyncTronGridClient: cls.TRONGRID,
         }
         client_type = type(client)
         try:
@@ -103,15 +114,38 @@ class ContractMetadataService:
             )
             return None
 
+    def _get_tron_grid_client(self, chain_id: int) -> AsyncTronGridClient | None:
+        try:
+            return AsyncTronGridClient(
+                EthereumNetwork(chain_id),
+                api_key=settings.TRONGRID_API_KEY,
+                max_requests=settings.TRONGRID_MAX_REQUESTS,
+            )
+        except TronGridClientConfigurationProblem:
+            logger.warning(
+                "TronGrid client is not available for current network %s",
+                EthereumNetwork(chain_id),
+            )
+            return None
+
     @cache  # noqa: B019
     def enabled_clients(
         self, chain_id: int
-    ) -> list[AsyncEtherscanClientV2 | AsyncBlockscoutClient | AsyncSourcifyClient]:
+    ) -> list[
+        AsyncEtherscanClientV2
+        | AsyncBlockscoutClient
+        | AsyncSourcifyClient
+        | AsyncTronGridClient
+    ]:
         """
         :param chain_id:
         :return: List of available clients for the provided `chain_id`.
-            First Etherscan, second Sourcify, third Blockscout.
+            TronGrid for TRON networks, otherwise first Etherscan, second Sourcify, third Blockscout.
         """
+        if tron_grid_client := self._get_tron_grid_client(chain_id):
+            # The other explorers don't support TRON, querying them just burns requests
+            return [tron_grid_client]
+
         clients = (
             self._get_etherscan_client(chain_id),
             self._get_sourcify_client(chain_id),

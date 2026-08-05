@@ -21,6 +21,7 @@ from app.services.contract_metadata_service import (
     ContractSource,
     EnhancedContractMetadata,
 )
+from app.services.tron_grid_client import AsyncTronGridClient
 
 from ..datasources.db.async_db_test_case import AsyncDbTestCase
 from ..mocks.contract_metadata_mocks import (
@@ -29,6 +30,7 @@ from ..mocks.contract_metadata_mocks import (
     etherscan_proxy_metadata_mock,
     sourcify_metadata_mock,
 )
+from ..mocks.tron_grid_mocks import tron_grid_metadata_mock
 
 
 class TestContractMetadataService(AsyncDbTestCase):
@@ -155,6 +157,67 @@ class TestContractMetadataService(AsyncDbTestCase):
         mock_blockscout_client.side_effect = BlockScoutConfigurationProblem
         enabled_clients = contract_metadata_service.enabled_clients(chain_id)
         self.assertEqual(len(enabled_clients), 0)
+
+    @mock.patch.object(AsyncBlockscoutClient, "__init__", return_value=None)
+    @mock.patch.object(AsyncSourcifyClient, "__init__", return_value=None)
+    @mock.patch.object(AsyncEtherscanClientV2, "__init__", return_value=None)
+    async def test_enabled_clients_tron(
+        self,
+        mock_etherscan_client: MagicMock,
+        mock_sourcify_client: MagicMock,
+        mock_blockscout_client: MagicMock,
+    ):
+        contract_metadata_service = ContractMetadataService("")
+        enabled_clients = contract_metadata_service.enabled_clients(2494104990)
+        self.assertEqual(len(enabled_clients), 1)
+        self.assertIsInstance(enabled_clients[0], AsyncTronGridClient)
+        mock_etherscan_client.assert_not_called()
+        mock_sourcify_client.assert_not_called()
+        mock_blockscout_client.assert_not_called()
+        contract_metadata_service.enabled_clients.cache_clear()
+        # Non TRON networks must not get a TronGrid client
+        enabled_clients = contract_metadata_service.enabled_clients(1)
+        self.assertEqual(len(enabled_clients), 3)
+        self.assertIsInstance(enabled_clients[0], AsyncEtherscanClientV2)
+        self.assertIsInstance(enabled_clients[1], AsyncSourcifyClient)
+        self.assertIsInstance(enabled_clients[2], AsyncBlockscoutClient)
+        contract_metadata_service.enabled_clients.cache_clear()
+
+    async def test_get_contract_metadata_tron(self):
+        contract_metadata_service = ContractMetadataService("")
+        with mock.patch.object(
+            AsyncTronGridClient,
+            "async_get_contract_metadata",
+            autospec=True,
+            return_value=tron_grid_metadata_mock,
+        ):
+            contract_data = await contract_metadata_service.get_contract_metadata(
+                fast_to_checksum_address("0xf1dd46Af04774C999e213FA6dF2b4278BBa8A757"),
+                2494104990,
+            )
+        contract_metadata_service.enabled_clients.cache_clear()
+        self.assertEqual(contract_data.metadata, tron_grid_metadata_mock)
+        self.assertEqual(contract_data.source, ContractSource.TRONGRID)
+
+    @db_session_context
+    async def test_process_contract_metadata_tron(self):
+        contract_address = "0xf1dd46Af04774C999e213FA6dF2b4278BBa8A757"
+        chain_id = 2494104990
+        await AbiSource.get_or_create(ContractSource.TRONGRID.value, "")
+        contract_metadata = EnhancedContractMetadata(
+            address=fast_to_checksum_address(contract_address),
+            metadata=tron_grid_metadata_mock,
+            source=ContractSource.TRONGRID,
+            chain_id=chain_id,
+        )
+        self.assertTrue(
+            await ContractMetadataService.process_contract_metadata(contract_metadata)
+        )
+        contract = await Contract.get_contract(
+            address=HexBytes(contract_address), chain_id=chain_id
+        )
+        self.assertEqual(contract.name, tron_grid_metadata_mock.name)
+        self.assertEqual(contract.abi.abi_json, tron_grid_metadata_mock.abi)
 
     @db_session_context
     async def test_process_contract_metadata(self):
