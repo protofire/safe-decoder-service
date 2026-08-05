@@ -47,10 +47,29 @@ class Settings(BaseSettings):
         "https://safe-transaction-assets.safe.global/contracts/logos"
     )
     CONTRACTS_TRUSTED_FOR_DELEGATE_CALL: list[str] = [
+        "MultiSend",
         "MultiSendCallOnly",
         "SignMessageLib",
         "SafeMigration",
     ]
+    # Chains where Safe contracts are not deployed on the canonical addresses.
+    # chain_id -> contract_name -> addresses
+    SAFE_DEPLOYMENTS_OVERRIDES: dict[int, dict[str, list[str]]] = {
+        728126428: {  # TRON Mainnet
+            "MultiSendCallOnly": ["0x6A8824d50B7AeEc29A6eC61ce928d964331AB35f"],
+            "SignMessageLib": ["0x3711BA027fD46D537e17b2B12231818b4df89f14"],
+            "MultiSend": ["0x92F65C8F5eeB25617Acf7F3626936B5AB0C63680"],
+            "SafeL2": ["0xddBB124aA9f02C1234026E4f9AB106169FAaf15e"],
+        },
+        2494104990: {  # TRON Shasta
+            "MultiSendCallOnly": ["0xf1dd46Af04774C999e213FA6dF2b4278BBa8A757"],
+            "SignMessageLib": ["0x288603d5B09ce4d0Fe8b9Dd7A9Af87e02d0De5e6"],
+            "MultiSend": ["0x5b84368e2fDe91C994434A4acBd29A0E1d60a1eA"],
+            "SafeL2": ["0x2e6355a073170c38b778af539b8f11e207ca4e30"],
+        },
+    }
+    TRONGRID_API_KEY: str = ""
+    TRONGRID_MAX_REQUESTS: int = 1
 
 
 settings = Settings()

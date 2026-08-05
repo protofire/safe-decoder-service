@@ -32,6 +32,11 @@ logger = logging.getLogger(__name__)
 
 _DUMMY_W3 = Web3()
 
+# Version used for the display name of the contracts defined on SAFE_DEPLOYMENTS_OVERRIDES,
+# every overridden deployment is a 1.4.1 release (TRON tx service `/api/v1/about/singletons/`
+# reports 1.4.1+L2 for both TRON Mainnet and Shasta).
+_OVERRIDE_DEPLOYMENTS_VERSION = "1.4.1"
+
 # Maps (contract_name, version) to ABI.
 # version=None means the ABI applies regardless of version for that contract name.
 _CONTRACT_ABI_MAP: dict[tuple[str, str | None], ABI] = {
@@ -91,6 +96,26 @@ def _get_default_deployments_by_version() -> list[tuple[str, str, str]]:
 
 
 @cache
+def _get_deployments_by_chain_id(chain_id: int) -> list[tuple[str, str, str]]:
+    """
+    Get the deployments that are inserted on database for the given `chain_id`.
+    Chains defined on `SAFE_DEPLOYMENTS_OVERRIDES` only get their overridden contracts,
+    as the canonical addresses are not deployed there.
+
+    :param chain_id:
+    :return: list of (version, contract_name, contract_address)
+    """
+    if overrides := settings.SAFE_DEPLOYMENTS_OVERRIDES.get(chain_id):
+        return [
+            (_OVERRIDE_DEPLOYMENTS_VERSION, contract_name, contract_address)
+            for contract_name, addresses in overrides.items()
+            for contract_address in addresses
+        ]
+
+    return _get_default_deployments_by_version()
+
+
+@cache
 def _get_address_to_abi_map() -> dict[str, ABI]:
     """
     Maps each known Safe contract address to its ABI.
@@ -98,8 +123,12 @@ def _get_address_to_abi_map() -> dict[str, ABI]:
 
     :return: dict of contract_address -> ABI
     """
+    deployments = list(_get_default_deployments_by_version())
+    for chain_id in settings.SAFE_DEPLOYMENTS_OVERRIDES:
+        deployments += _get_deployments_by_chain_id(chain_id)
+
     result: dict[str, ABI] = {}
-    for version, contract_name, contract_address in _get_default_deployments_by_version():
+    for version, contract_name, contract_address in deployments:
         abi = _CONTRACT_ABI_MAP.get(
             (contract_name, version)
         ) or _CONTRACT_ABI_MAP.get((contract_name, None))
@@ -111,12 +140,12 @@ def _get_address_to_abi_map() -> dict[str, ABI]:
 async def update_safe_contracts_info() -> None:
     """
     For every known Safe contract address, create or update Contract rows for all
-    chain_ids currently present in the DB, linking the locally known ABI where available.
+    chain_ids currently present in the DB and every chain defined on
+    `SAFE_DEPLOYMENTS_OVERRIDES`, linking the locally known ABI where available.
     """
-    chain_ids = await Contract.get_distinct_chain_ids()
-    if not chain_ids:
-        logger.info("No active chains found, skipping Safe contracts seeding")
-        return
+    chain_ids = set(await Contract.get_distinct_chain_ids()) | set(
+        settings.SAFE_DEPLOYMENTS_OVERRIDES
+    )
 
     address_to_abi = _get_address_to_abi_map()
 
@@ -124,23 +153,25 @@ async def update_safe_contracts_info() -> None:
     # when multiple addresses share the same ABI object.
     abi_id_cache: dict[int, int | None] = {}
 
-    for version, contract_name, contract_address in _get_default_deployments_by_version():
-        address_bytes = HexBytes(contract_address)
-        display_name = _generate_safe_contract_display_name(contract_name, version)
-        trusted = contract_name in settings.CONTRACTS_TRUSTED_FOR_DELEGATE_CALL
-
-        # Resolve ABI id once per unique ABI object, not once per chain_id
-        abi_id: int | None = None
-        abi_json = address_to_abi.get(contract_address)
-        if abi_json is not None:
-            cache_key = id(abi_json)
-            if cache_key not in abi_id_cache:
-                abi = await Abi.get_abi(cast(list[dict], abi_json))
-                abi_id_cache[cache_key] = abi.id if abi else None
-            abi_id = abi_id_cache[cache_key]
-
+    for chain_id in sorted(chain_ids):
         created_count = 0
-        for chain_id in chain_ids:
+        for version, contract_name, contract_address in _get_deployments_by_chain_id(
+            chain_id
+        ):
+            address_bytes = HexBytes(contract_address)
+            display_name = _generate_safe_contract_display_name(contract_name, version)
+            trusted = contract_name in settings.CONTRACTS_TRUSTED_FOR_DELEGATE_CALL
+
+            # Resolve ABI id once per unique ABI object, not once per contract address
+            abi_id: int | None = None
+            abi_json = address_to_abi.get(contract_address)
+            if abi_json is not None:
+                cache_key = id(abi_json)
+                if cache_key not in abi_id_cache:
+                    abi = await Abi.get_abi(cast(list[dict], abi_json))
+                    abi_id_cache[cache_key] = abi.id if abi else None
+                abi_id = abi_id_cache[cache_key]
+
             contract, created = await Contract.get_or_create(address_bytes, chain_id)
             contract.name = contract_name
             contract.display_name = display_name
@@ -153,11 +184,7 @@ async def update_safe_contracts_info() -> None:
 
         if created_count:
             logger.info(
-                "Seeded contract %s (%s %s) on %d new chains",
-                contract_address,
-                contract_name,
-                version,
-                created_count,
+                "Seeded %d new Safe contracts on chain %d", created_count, chain_id
             )
 
     logger.info(
