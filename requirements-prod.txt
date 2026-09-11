@@ -12,7 +12,7 @@ redis[hiredis]==6.4.0
 git+https://github.com/protofire/safe-eth-py.git@v7.20.0#egg=safe-eth-py
 #safe-eth-py==7.17.1
 setuptools>=75.0.0,<82
-sqladmin[full]==0.22.0
+sqladmin[full]==0.27.1
 sqlmodel==0.0.27
 uvicorn-worker==0.4.0
-web3==7.14.0
+web3==7.15.0
