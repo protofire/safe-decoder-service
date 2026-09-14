@@ -1,6 +1,7 @@
 from unittest.mock import patch
 
 from hexbytes import HexBytes
+from safe_eth.eth import EthereumNetwork
 from safe_eth.eth.contracts import get_safe_V1_4_1_contract
 from web3 import Web3
 
@@ -20,8 +21,8 @@ from app.services.safe_contracts_service import (
 
 from ..datasources.db.async_db_test_case import AsyncDbTestCase
 
-TRON_SHASTA_CHAIN_ID = 2494104990
-TRON_MAINNET_CHAIN_ID = 728126428
+TRON_SHASTA_CHAIN_ID = EthereumNetwork.TRON_SHASTA.value
+TRON_MAINNET_CHAIN_ID = EthereumNetwork.TRON_MAINNET.value
 CANONICAL_DEPLOYMENTS = [
     ("1.4.1", "MultiSendCallOnly", "0x9641d764fc13c8B624c04430C7356C1C7C8102e2"),
     ("1.4.1", "MultiSend", "0x38869bf66a61cF6bDB996A6aE40D5853Fd43B526"),
