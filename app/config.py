@@ -51,6 +51,34 @@ class Settings(BaseSettings):
         "SignMessageLib",
         "SafeMigration",
     ]
+    # Chains where Safe contracts are not deployed on the canonical addresses.
+    # chain_id -> contract_name -> addresses
+    SAFE_DEPLOYMENTS_OVERRIDES: dict[int, dict[str, list[str]]] = {
+        728126428: {  # TRON Mainnet
+            "Safe": ["0x1619de3c122b610ef788a1bc13772a0c8506ed09"],
+            "SafeL2": ["0x5c03b2637513d2ee57603d8aef67f6989b426c14"],
+            "SafeProxyFactory": ["0x39235a65aed90f13a2bbec5c53f0d710cdbbc5d7"],
+            "MultiSend": ["0x92f65c8f5eeb25617acf7f3626936b5ab0c63680"],
+            "MultiSendCallOnly": ["0x6a8824d50b7aeec29a6ec61ce928d964331ab35f"],
+            "CompatibilityFallbackHandler": [
+                "0x3f70526ed0567473d3ce222e3aae634baa932c8e"
+            ],
+            "SignMessageLib": ["0x3711ba027fd46d537e17b2b12231818b4df89f14"],
+            "SimulateTxAccessor": ["0xb7b37186a996b2e6371397a6056fdd34ef33ad92"],
+        },
+        2494104990: {  # TRON Shasta
+            "Safe": ["0x48a430a9e259b1fa41408cef6103c56d8051ef36"],
+            "SafeL2": ["0x1bdf92b7ad0aa881e811c540bde8600c3e2a41c8"],
+            "SafeProxyFactory": ["0xe010048abee39457ddaa556ed782732ca80ab39c"],
+            "MultiSend": ["0x165a462e2017d8bf5e156e6d1ca6ac807023f861"],
+            "MultiSendCallOnly": ["0xf22794c67fe86468272a25401fe95acb6df39f19"],
+            "CompatibilityFallbackHandler": [
+                "0x2c8c449ae05a7d43b9ebe1bd49600630d11c3ab5"
+            ],
+            "SignMessageLib": ["0x18e47340854f3612974bf5342ba88262a348e589"],
+            "SimulateTxAccessor": ["0xfe9c59afbc538185b3412269864192e29c5578f1"],
+        },
+    }
 
 
 settings = Settings()
